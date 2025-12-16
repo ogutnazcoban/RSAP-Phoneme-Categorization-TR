@@ -479,6 +479,27 @@
             trial_duration: 500
         };
 
+        // --- YENİ EKLENEN KISIM: FEEDBACK TRIAL (TÜRKÇE) ---
+        var feedback_trial = {
+            type: jsPsychHtmlKeyboardResponse,
+            stimulus: function() {
+                var last_data = jsPsych.data.get().last(1).values()[0];
+                var accuracy = last_data.accuracy; 
+                
+                // Hit (Hedef VAR + EVET) veya Correct Rejection (Hedef YOK + HAYIR) -> DOĞRU (Yeşil)
+                // Diğer durumlar -> YANLIŞ (Kırmızı)
+
+                if(accuracy === "hit" || accuracy === "correct_rejection") {
+                    return '<div style="font-size:60px; font-weight:bold; color:#4CAF50;">DOĞRU</div>';
+                } else {
+                    return '<div style="font-size:60px; font-weight:bold; color:#f44336;">YANLIŞ</div>';
+                }
+            },
+            choices: "NO_KEYS",
+            trial_duration: 1000 // 1 saniye ekranda kalır
+        };
+        // -----------------------------------------------------------
+
         var clean_test = {
             timeline: [
                 fixation, 
@@ -516,7 +537,8 @@
                         else if(target && !said_yes) data.accuracy = "miss";
                         else data.accuracy = "correct_rejection";
                     }
-                }
+                },
+                feedback_trial // Geri bildirim burada
             ],
             timeline_variables: config.clean_trials,
             randomize_order: true,
@@ -607,7 +629,8 @@
                         else if(target && !said_yes) data.accuracy = "miss";
                         else data.accuracy = "correct_rejection";
                     }
-                }
+                },
+                feedback_trial // Geri bildirim burada
             ],
             timeline_variables: config.noisy_trials,
             randomize_order: true,
@@ -684,5 +707,3 @@
 
   </script>
 </html>
-
-```
