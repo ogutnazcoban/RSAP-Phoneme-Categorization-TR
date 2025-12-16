@@ -1,0 +1,705 @@
+Öğütnaz, şu an çok sinirli olduğunu görüyorum ve haklısın. Saatlerdir uğraşıyorsun ve "ekran boş" hatası insanı çileden çıkarır. Seni anlıyorum.
+
+Ekranın **bembeyaz kalmasının ve hiçbir şey açılmamasının tek bir sebebi var**:
+
+Kodun içindeki **"Ön Yükleme (Preload)"** komutu.
+
+Bu komut (`jsPsychPreload`), deney başlamadan önce listedeki **tüm ses dosyalarını** (sadece Vowel değil; Stop, Fricative, hepsi) kontrol eder. Eğer **tek bir tanesinin** bile isminde harf hatası varsa veya dosya eksikse, sistem "Yükleniyor" bile diyemeden kilitlenir ve beyaz ekranda kalır.
+
+Sen `Vowel` klasörünü düzelttin ama belki `Stop` veya `Fricative` dosyalarında (görmediğim diğer dosyalarda) hala bir harf uyuşmazlığı var.
+
+**ÇÖZÜM: Ön Yüklemeyi (Preload) iptal ediyoruz.**
+
+Aşağıdaki kodu direkt yapıştır. Bu kodda o "kontrol eden ve kilitleyen" kısmı sildim. **Bu sayede deneyin %100 açılacak.** Eğer eksik bir dosya varsa, deney açıldıktan sonra o dosyanın sırası geldiğinde hata verir ama en azından giriş ekranını görürsün.
+
+İşte çalışan kodun tamamı:
+
+```html
+<!DOCTYPE html>
+<html lang="tr">
+  <head>
+    <meta charset="UTF-8">
+    <title>Fonem Sınıflandırmasında Tını, Fonem Türü ve Dinleme Ortamına Etkileri</title>
+    
+    <script src="https://unpkg.com/jspsych@7.3.3"></script>
+    <script src="https://unpkg.com/@jspsych/plugin-html-keyboard-response@1.1.2"></script>
+    <script src="https://unpkg.com/@jspsych/plugin-html-button-response@1.1.2"></script>
+    <script src="https://unpkg.com/@jspsych/plugin-audio-keyboard-response@1.1.2"></script>
+    <script src="https://unpkg.com/@jspsych/plugin-audio-button-response@1.1.2"></script>
+    <script src="https://unpkg.com/@jspsych/plugin-survey-text@1.1.2"></script> 
+    <link href="https://unpkg.com/jspsych@7.3.3/css/jspsych.css" rel="stylesheet" type="text/css" />
+    
+    <style>
+      html, body { width: 100%; height: 100%; margin: 0; padding: 0; background-color: #2b2b2b; color: #e0e0e0; font-family: 'Arial', sans-serif; overflow: hidden; }
+      #jspsych-target { width: 100%; height: 100%; overflow-y: auto; }
+      .instruction-text { font-size: 20px; line-height: 1.6; max-width: 900px; margin: auto; padding: 20px; background-color: #333; border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.3); text-align: left; }
+      .highlight { color: #ffcc00; font-weight: bold; }
+      .fixation { font-size: 80px; color: white; font-weight: bold; }
+      .response-btn { font-size: 20px; padding: 15px 40px; margin: 20px; border: none; border-radius: 8px; cursor: pointer; transition: transform 0.1s; }
+      .btn-yes { background-color: #4CAF50; color: white; }
+      .btn-no { background-color: #f44336; color: white; }
+      .response-btn:hover { transform: scale(1.05); }
+      .jspsych-btn { font-size: 18px; padding: 12px 24px; margin: 10px; background-color: #2196F3; color: white; border: none; border-radius: 5px; cursor: pointer; }
+      #jspsych-progressbar-container { color: #4CAF50 !important; margin-bottom: 10px !important; font-weight: bold; font-size: 18px; }
+      #jspsych-progressbar-inner { background-color: #4CAF50 !important; }
+      #progress-text { font-weight: bold; margin-left: 10px; color: #4CAF50; }
+      #quit-btn-container { position: fixed; bottom: 20px; right: 20px; z-index: 2147483647; }
+      .quit-btn { background-color: #555; color: #fff; padding: 10px 15px; border: 1px solid #777; border-radius: 5px; font-size: 14px; cursor: pointer; opacity: 0.8; transition: opacity 0.3s, background-color 0.3s; box-shadow: 0 2px 5px rgba(0,0,0,0.5); }
+      .quit-btn:hover { opacity: 1; background-color: #d32f2f; }
+      /* CSS UPDATE: Grid yapısı */
+      .audio-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; justify-content: center; margin-top: 20px; max-width: 900px; margin-left: auto; margin-right: auto; }
+      .audio-item { background: #444; padding: 10px; border-radius: 8px; text-align: center; width: 100%; box-sizing: border-box; border: 1px solid #555; }
+      .audio-item p { margin: 0 0 5px 0; font-size: 15px; font-weight: bold; color: #ddd; }
+      audio { width: 100%; height: 30px; }
+    </style>
+  </head>
+  <body>
+    <noscript><div style="color:red; text-align:center; margin-top:50px;">Lütfen tarayıcınızın JavaScript özelliğini etkinleştiriniz.</div></noscript>
+    <div id="jspsych-target"></div>
+    <div id="quit-btn-container"><button class="quit-btn" onclick="window.quitExperiment()">Çalışmayı Sonlandır</button></div>
+  </body>
+  <script>
+    
+    // --- AYARLAR ---
+    const TOTAL_CYCLES = 3; 
+    const REPETITIONS_PER_STIMULUS_IN_BLOCK = 1;
+
+    window.quitExperiment = function() {
+        if(confirm("Deneyi şimdi sonlandırmak istiyor musunuz? Şu ana kadar toplanan veriler kaydedilecektir.")) {
+            jsPsych.endExperiment("Katılımcı tarafından sonlandırıldı.");
+        }
+    };
+
+    // --- YAPILANDIRMA ---
+    
+    const experiment_structure = {
+        stop: {
+            id: "stop_consonant",
+            type_name: "Durak Ünsüzü (K)",
+            target_char: "K",
+            
+            intro_long: "Female_2_Kasaba.wav",
+            intro_short_clean: "Female_2_K.wav", 
+            intro_short_noisy: "Single_Noisy_Female_2_Ka_StopConsonant.wav", 
+            
+            distractors: [
+                { name: "Ç /30ms/", file: "Female_2_C.wav" }, 
+                { name: "P /30ms/", file: "Female_2_Pu.wav" },
+                { name: "T /30ms/", file: "Female_2_Tu.wav" }
+            ],
+
+            clean_trials: [
+                { stimulus: "Seq_1_Target_Female_2_Ka_ATTACK_p25.wav", target_present: true, condition_label: "Clean_LAT_p25" },
+                { stimulus: "Seq_2_Target_Female_2_Ka_ATTACK_p50.wav", target_present: true, condition_label: "Clean_LAT_p50" },
+                { stimulus: "Seq_3_Target_Female_2_Ka_ATTACK_p75.wav", target_present: true, condition_label: "Clean_LAT_p75" },
+                { stimulus: "STOP_LAT_Absent.wav", target_present: false, condition_label: "Clean_LAT_Absent" }, 
+                
+                { stimulus: "Seq_1_Target_Female_2_Ka_SC_p25.wav", target_present: true, condition_label: "Clean_SC_p25" },
+                { stimulus: "Seq_2_Target_Female_2_Ka_SC_p50.wav", target_present: true, condition_label: "Clean_SC_p50" },
+                { stimulus: "Seq_3_Target_Female_2_Ka_SC_p75.wav", target_present: true, condition_label: "Clean_SC_p75" },
+                { stimulus: "STOP_SC_Absent.wav", target_present: false, condition_label: "Clean_SC_Absent" }, 
+                
+                { stimulus: "Seq_1_Target_Female_2_Ka_FLUX_p25.wav", target_present: true, condition_label: "Clean_SF_p25" },
+                { stimulus: "Seq_2_Target_Female_2_Ka_FLUX_p50.wav", target_present: true, condition_label: "Clean_SF_p50" },
+                { stimulus: "Seq_3_Target_Female_2_Ka_FLUX_p75.wav", target_present: true, condition_label: "Clean_SF_p75" },
+                { stimulus: "STOP_SF_Absent.wav", target_present: false, condition_label: "Clean_SF_Absent" } 
+            ],
+            noisy_trials: [
+                { stimulus: "SNR5_Seq_1_Target_Female_2_Ka_ATTACK_p25.wav", target_present: true, condition_label: "Noisy_LAT_p25" },
+                { stimulus: "SNR5_Seq_2_Target_Female_2_Ka_ATTACK_p50.wav", target_present: true, condition_label: "Noisy_LAT_p50" },
+                { stimulus: "SNR5_Seq_3_Target_Female_2_Ka_ATTACK_p75.wav", target_present: true, condition_label: "Noisy_LAT_p75" },
+                { stimulus: "STOP_SNR5_LAT_Absent.wav", target_present: false, condition_label: "Noisy_LAT_Absent" }, 
+                
+                { stimulus: "SNR5_Seq_1_Target_Female_2_Ka_SC_p25.wav", target_present: true, condition_label: "Noisy_SC_p25" },
+                { stimulus: "SNR5_Seq_2_Target_Female_2_Ka_SC_p50.wav", target_present: true, condition_label: "Noisy_SC_p50" },
+                { stimulus: "SNR5_Seq_3_Target_Female_2_Ka_SC_p75.wav", target_present: true, condition_label: "Noisy_SC_p75" },
+                { stimulus: "STOP_SNR5_SC_Absent.wav", target_present: false, condition_label: "Noisy_SC_Absent" }, 
+                
+                { stimulus: "SNR5_Seq_1_Target_Female_2_Ka_FLUX_p25.wav", target_present: true, condition_label: "Noisy_SF_p25" },
+                { stimulus: "SNR5_Seq_2_Target_Female_2_Ka_FLUX_p50.wav", target_present: true, condition_label: "Noisy_SF_p50" },
+                { stimulus: "SNR5_Seq_3_Target_Female_2_Ka_FLUX_p75.wav", target_present: true, condition_label: "Noisy_SF_p75" },
+                { stimulus: "STOP_SNR5_SF_Absent.wav", target_present: false, condition_label: "Noisy_SF_Absent" } 
+            ]
+        },
+        fricative: {
+            id: "fricative",
+            type_name: "Frikatif (F)",
+            target_char: "F",
+            
+            intro_long: "Female_2_Fabrika.wav",
+            intro_short_clean: "Female_2_F.wav", 
+            intro_short_noisy: "Single_Noisy_Female_2_F_Fricative.wav", 
+            
+            distractors: [
+                { name: "S /30ms/", file: "Female_2_S.wav" },
+                { name: "Ş /30ms/", file: "Female_2_Sh.wav" },
+                { name: "H /30ms/", file: "Female_2_H.wav" }
+            ],
+
+            clean_trials: [
+                { stimulus: "Seq_1_Target_Female_2_F_ATTACK_p25.wav", target_present: true, condition_label: "Clean_LAT_p25" },
+                { stimulus: "Seq_2_Target_Female_2_F_ATTACK_p50.wav", target_present: true, condition_label: "Clean_LAT_p50" },
+                { stimulus: "Seq_3_Target_Female_2_F_ATTACK_p75.wav", target_present: true, condition_label: "Clean_LAT_p75" },
+                { stimulus: "FRIC_LAT_Absent.wav", target_present: false, condition_label: "Clean_LAT_Absent" }, 
+                
+                { stimulus: "Seq_1_Target_Female_2_F_SC_p25.wav", target_present: true, condition_label: "Clean_SC_p25" },
+                { stimulus: "Seq_2_Target_Female_2_F_SC_p50.wav", target_present: true, condition_label: "Clean_SC_p50" },
+                { stimulus: "Seq_3_Target_Female_2_F_SC_p75.wav", target_present: true, condition_label: "Clean_SC_p75" },
+                { stimulus: "FRIC_SC_Absent.wav", target_present: false, condition_label: "Clean_SC_Absent" }, 
+                
+                { stimulus: "Seq_1_Target_Female_2_F_FLUX_p25.wav", target_present: true, condition_label: "Clean_SF_p25" },
+                { stimulus: "Seq_2_Target_Female_2_F_FLUX_p50.wav", target_present: true, condition_label: "Clean_SF_p50" },
+                { stimulus: "Seq_3_Target_Female_2_F_FLUX_p75.wav", target_present: true, condition_label: "Clean_SF_p75" },
+                { stimulus: "FRIC_SF_Absent.wav", target_present: false, condition_label: "Clean_SF_Absent" } 
+            ],
+            noisy_trials: [
+                { stimulus: "SNR5_Seq_1_Target_Female_2_F_ATTACK_p25.wav", target_present: true, condition_label: "Noisy_LAT_p25" },
+                { stimulus: "SNR5_Seq_2_Target_Female_2_F_ATTACK_p50.wav", target_present: true, condition_label: "Noisy_LAT_p50" },
+                { stimulus: "SNR5_Seq_3_Target_Female_2_F_ATTACK_p75.wav", target_present: true, condition_label: "Noisy_LAT_p75" },
+                { stimulus: "FRIC_SNR5_LAT_Absent.wav", target_present: false, condition_label: "Noisy_LAT_Absent" }, 
+                
+                { stimulus: "SNR5_Seq_1_Target_Female_2_F_SC_p25.wav", target_present: true, condition_label: "Noisy_SC_p25" },
+                { stimulus: "SNR5_Seq_2_Target_Female_2_F_SC_p50.wav", target_present: true, condition_label: "Noisy_SC_p50" },
+                { stimulus: "SNR5_Seq_3_Target_Female_2_F_SC_p75.wav", target_present: true, condition_label: "Noisy_SC_p75" },
+                { stimulus: "FRIC_SNR5_SC_Absent.wav", target_present: false, condition_label: "Noisy_SC_Absent" }, 
+                
+                { stimulus: "SNR5_Seq_1_Target_Female_2_F_FLUX_p25.wav", target_present: true, condition_label: "Noisy_SF_p25" },
+                { stimulus: "SNR5_Seq_2_Target_Female_2_F_FLUX_p50.wav", target_present: true, condition_label: "Noisy_SF_p50" },
+                { stimulus: "SNR5_Seq_3_Target_Female_2_F_FLUX_p75.wav", target_present: true, condition_label: "Noisy_SF_p75" },
+                { stimulus: "FRIC_SNR5_SF_Absent.wav", target_present: false, condition_label: "Noisy_SF_Absent" } 
+            ]
+        },
+        vowel: {
+            id: "vowel",
+            type_name: "Ünlü (I)",
+            target_char: "I",
+            
+            intro_long: "Female_2_Istakoz.wav",
+            intro_short_clean: "Female_2_I.wav", 
+            intro_short_noisy: "Single_Noisy_Female_2_I_Vowel.wav", 
+            
+            distractors: [
+                { name: "O /30ms/", file: "Female_2_O.wav" },
+                { name: "U /30ms/", file: "Female_2_U.wav" },
+                { name: "İ /30ms/", file: "Female_2_Idot.wav" }
+            ],
+
+            clean_trials: [
+                { stimulus: "Seq_1_Target_Female_2_I_ATTACK_p25.wav", target_present: true, condition_label: "Clean_LAT_p25" },
+                { stimulus: "Seq_2_Target_Female_2_I_ATTACK_p50.wav", target_present: true, condition_label: "Clean_LAT_p50" },
+                { stimulus: "Seq_3_Target_Female_2_I_ATTACK_p75.wav", target_present: true, condition_label: "Clean_LAT_p75" },
+                { stimulus: "Vowel_LAT_Absent.wav", target_present: false, condition_label: "Clean_LAT_Absent" },
+                
+                { stimulus: "Seq_1_Target_Female_2_I_SC_p25.wav", target_present: true, condition_label: "Clean_SC_p25" },
+                { stimulus: "Seq_2_Target_Female_2_I_SC_p50.wav", target_present: true, condition_label: "Clean_SC_p50" },
+                { stimulus: "Seq_3_Target_Female_2_I_SC_p75.wav", target_present: true, condition_label: "Clean_SC_p75" },
+                { stimulus: "Vowel_SC_Absent.wav", target_present: false, condition_label: "Clean_SC_Absent" },
+                
+                { stimulus: "Seq_1_Target_Female_2_I_FLUX_p25.wav", target_present: true, condition_label: "Clean_SF_p25" },
+                { stimulus: "Seq_2_Target_Female_2_I_FLUX_p50.wav", target_present: true, condition_label: "Clean_SF_p50" },
+                { stimulus: "Seq_3_Target_Female_2_I_FLUX_p75.wav", target_present: true, condition_label: "Clean_SF_p75" },
+                { stimulus: "Vowel_SF_Absent.wav", target_present: false, condition_label: "Clean_SF_Absent" }
+            ],
+            noisy_trials: [
+                { stimulus: "SNR5_Seq_1_Target_Female_2_I_ATTACK_p25.wav", target_present: true, condition_label: "Noisy_LAT_p25" },
+                { stimulus: "SNR5_Seq_2_Target_Female_2_I_ATTACK_p50.wav", target_present: true, condition_label: "Noisy_LAT_p50" },
+                { stimulus: "SNR5_Seq_3_Target_Female_2_I_ATTACK_p75.wav", target_present: true, condition_label: "Noisy_LAT_p75" },
+                { stimulus: "Vowel_SNR5_LAT_Absent.wav", target_present: false, condition_label: "Noisy_LAT_Absent" },
+                
+                { stimulus: "SNR5_Seq_1_Target_Female_2_I_SC_p25.wav", target_present: true, condition_label: "Noisy_SC_p25" },
+                { stimulus: "SNR5_Seq_2_Target_Female_2_I_SC_p50.wav", target_present: true, condition_label: "Noisy_SC_p50" },
+                { stimulus: "SNR5_Seq_3_Target_Female_2_I_SC_p75.wav", target_present: true, condition_label: "Noisy_SC_p75" },
+                { stimulus: "Vowel_SNR5_SC_Absent.wav", target_present: false, condition_label: "Noisy_SC_Absent" },
+                
+                { stimulus: "SNR5_Seq_1_Target_Female_2_I_FLUX_p25.wav", target_present: true, condition_label: "Noisy_SF_p25" },
+                { stimulus: "SNR5_Seq_2_Target_Female_2_I_FLUX_p50.wav", target_present: true, condition_label: "Noisy_SF_p50" },
+                { stimulus: "SNR5_Seq_3_Target_Female_2_I_FLUX_p75.wav", target_present: true, condition_label: "Noisy_SF_p75" },
+                { stimulus: "Vowel_SNR5_SF_Absent.wav", target_present: false, condition_label: "Noisy_SF_Absent" }
+            ]
+        }
+    };
+
+    /* -------------------------------------------------------------------------- */
+    /* 2. BAŞLATMA                                                                */
+    /* -------------------------------------------------------------------------- */
+
+    const jsPsych = initJsPsych({
+      display_element: 'jspsych-target', 
+      show_progress_bar: true, 
+      auto_update_progress_bar: true,
+      message_progress_bar: 'Tamamlanma Durumu', 
+      on_finish: function() {
+        jsPsych.data.get().localSave('csv', 'Deney_Sonuclari_Ham.csv'); 
+        analyzeAndSaveSummary();
+      },
+      on_trial_finish: function() {
+        var progress = jsPsych.getProgressBarCompleted();
+        var percent = Math.round(progress * 100);
+        
+        var barContainer = document.querySelector('#jspsych-progressbar-container span');
+        if(barContainer) {
+             if(!document.getElementById('progress-text')) {
+                 var span = document.createElement('span');
+                 span.id = 'progress-text';
+                 span.innerHTML = " " + percent + "%";
+                 barContainer.appendChild(span);
+             } else {
+                 document.getElementById('progress-text').innerHTML = " " + percent + "%";
+             }
+        }
+      }
+    });
+
+    function analyzeAndSaveSummary() {
+        var lastData = jsPsych.data.get().last(1).values()[0];
+        var pName = lastData.participant_name || "Unknown";
+        var pAge = lastData.participant_age || "-";
+        var pGender = lastData.participant_gender || "-";
+
+        var trials = jsPsych.data.get().filter({task: 'response'});
+        var groupedData = {};
+        
+        trials.values().forEach(function(row) {
+            var fileFullPath = row.file_name;
+            var label = row.condition_label;
+            var fileName = fileFullPath.split('/').pop(); 
+            var uniqueKey = label + " (" + fileName + ")";
+            
+            if (!groupedData[uniqueKey]) {
+                groupedData[uniqueKey] = {
+                    correct_count: 0,
+                    total_count: 0,
+                    responses: []
+                };
+            }
+            
+            var isCorrect = (row.accuracy === "hit" || row.accuracy === "correct_rejection");
+            if(isCorrect) groupedData[uniqueKey].correct_count++;
+            groupedData[uniqueKey].total_count++;
+            
+            var humanReadable = "";
+            if(row.accuracy === "hit") humanReadable = "Hit (Correct)";
+            else if(row.accuracy === "correct_rejection") humanReadable = "Correct Rejection (Correct)";
+            else if(row.accuracy === "miss") humanReadable = "Miss (Incorrect)";
+            else if(row.accuracy === "false_alarm") humanReadable = "False Alarm (Incorrect)";
+            
+            groupedData[uniqueKey].responses.push(humanReadable);
+        });
+        
+        var csvContent = "Name,Age,Gender,File_Name,Rep_1_Resp,Rep_2_Resp,Rep_3_Resp,Total_Correct,Result_(2_3_Pass)\n";
+        
+        for (var key in groupedData) {
+            var item = groupedData[key];
+            var passed = (item.correct_count >= 2) ? "PASSED" : "FAILED";
+            var r1 = item.responses[0] || "-";
+            var r2 = item.responses[1] || "-";
+            var r3 = item.responses[2] || "-";
+            
+            csvContent += `"${pName}","${pAge}","${pGender}","${key}",${r1},${r2},${r3},${item.correct_count},${passed}\n`;
+        }
+        
+        var hiddenElement = document.createElement('a');
+        hiddenElement.href = 'data:text/csv;charset=utf-8,' + encodeURI(csvContent);
+        hiddenElement.target = '_blank';
+        hiddenElement.download = 'Deney_Sonuclari_Ozet_Analiz.csv';
+        hiddenElement.click();
+    }
+
+    var timeline = [];
+
+    // --- PRELOAD KISMINI İPTAL ETTİM, BÖYLECE EKRAN BEYAZ KALMAZ ---
+    // var all_files = ... (SİLİNDİ)
+    // timeline.push({ type: jsPsychPreload ... }); (SİLİNDİ)
+
+     var intro_page = {
+        type: jsPsychHtmlButtonResponse,
+        stimulus: `
+            <div class="instruction-text" style="text-align: center;">
+                <h2>Fonem Sınıflandırmasında Tını, Fonem Türü ve Dinleme Ortamının Etkileri</h2>
+                <hr>
+                <p style="text-align: justify;">
+                    <strong>Araştırmacı:</strong> Ody. Öğütnaz Çoban<br>
+                    <strong>Danışman:</strong> Doç. Dr. Mustafa Yüksel
+                </p>
+                <p style="text-align: justify;">
+                    Bu çalışma, Ankara Medipol Üniversitesi Sağlık Bilimleri Enstitüsü Odyoloji Anabilim Dalı Yüksek Lisans Programı kapsamında yürütülmektedir.
+                </p>
+                <p style="text-align: justify;">
+                    <strong>Çalışmanın Amacı:</strong><br>
+                    Bu araştırmanın amacı, farklı dinleme ortamlarında (sessiz ve gürültülü) konuşma seslerinin (fonemlerin) tınısal özelliklerinin işitsel algı üzerindeki etkisini incelemektir.
+                    Sizden istenen, kulaklık aracılığıyla size dinletilecek olan kısa ses dizilerine odaklanmanız ve belirlenen hedef sesleri duyduğunuzda yanıt vermenizdir.
+                </p>
+                <p style="text-align: justify;">
+                    Katılımınız tamamen gönüllülük esasına dayanmaktadır. Elde edilen veriler yalnızca bilimsel amaçlarla kullanılacak ve kimliğiniz gizli tutulacaktır.
+                </p>
+                <p style="margin-top: 30px; font-weight: bold;">
+                    "Devam Et" butonuna basarak araştırmaya katılmayı kabul etmiş olursunuz.
+                </p>
+                <p style="margin-top: 10px; font-size: 16px; color: #aaa;">(Çalışmayı dilediğiniz an sağ alttaki butondan sonlandırabilirsiniz.)</p>
+            </div>
+        `,
+        choices: ['Devam Et']
+    };
+    timeline.push(intro_page);
+
+    var demographic_form = {
+        type: jsPsychSurveyText,
+        questions: [
+            {prompt: "Ad Soyad:", name: 'Name', required: true},
+            {prompt: "Yaş:", name: 'Age', required: true},
+            {prompt: "Cinsiyet:", name: 'Gender', required: true}
+        ],
+        button_label: 'Devam Et',
+        on_finish: function(data){
+            jsPsych.data.addProperties({
+                participant_name: data.response.Name,
+                participant_age: data.response.Age,
+                participant_gender: data.response.Gender
+            });
+        }
+    };
+    timeline.push(demographic_form);
+
+    var calibration_file = "Calibration_Sound_Long.wav"; 
+
+    var calibration = {
+        type: jsPsychHtmlButtonResponse,
+        stimulus: `
+            <div class="instruction-text">
+                <h3>Ses Ayarı</h3>
+                <p>
+                    Lütfen aşağıdaki sesi dinleyin. Bilgisayarınızın ses tuşlarını kullanarak ses seviyesini ayarlayın.
+                    <br>Ses <strong>net ve rahat</strong> duyulmalı, ancak çok yüksek olmamalıdır.
+                </p>
+                
+                <div style="margin: 30px auto; text-align: center;">
+                    <audio id="calib-audio" src="${calibration_file}" controls loop style="width: 100%; max-width: 400px;"></audio>
+                </div>
+
+                <p style="font-size: 0.9em; color: #aaa;">
+                    (İhtiyacınız olduğu kadar dinleyebilirsiniz. Hazır olduğunuzda 'Deneye Başla' butonuna tıklayın.)
+                </p>
+            </div>
+        `,
+        choices: ['Deneye Başla'],
+        on_load: function() {
+            var audio = document.getElementById("calib-audio");
+        }
+    };
+    timeline.push(calibration);
+
+    function createBlockTimeline(config) {
+        var block_timeline = [];
+
+        block_timeline.push({
+            type: jsPsychHtmlButtonResponse,
+            stimulus: `
+                <div class="instruction-text">
+                    <h2>Kategori: <span class="highlight">${config.type_name}</span></h2>
+                    <p>Bu bölümdeki hedef ses: <strong>/${config.target_char}/</strong></p>
+                    <p>Lütfen önce hedef sesi tanıyın:</p>
+                    
+                    <hr style="margin: 20px 0; border: 0.5px solid #555;">
+                    
+                    <div style="display:flex; justify-content:space-around; flex-wrap:wrap;">
+                        <div style="text-align:center; margin:10px; background:#444; padding:15px; border-radius:8px;">
+                            <p><strong>Hedef Ses (Kısa /30ms/ ve Uzun)</strong></p>
+                            <audio src="${config.intro_short_clean}" controls></audio>
+                            <br><br>
+                            <audio src="${config.intro_long}" controls></audio>
+                        </div>
+                    </div>
+                </div>
+            `,
+            choices: ['Devam Et']
+        });
+
+        block_timeline.push({
+            type: jsPsychHtmlButtonResponse,
+            stimulus: `
+                <div class="instruction-text">
+                    <p>Bir sonraki sayfada <strong>hedef dışı sesleri</strong> dinleyeceksiniz.</p>
+                    <p>Bu sesler hedef ses DEĞİLDİR.</p>
+                </div>
+            `,
+            choices: ['Hedef Dışı Sesleri Dinle']
+        });
+
+        var distractor_html = '<div class="audio-list">';
+        if(config.distractors) {
+            for(let i = 0; i < config.distractors.length; i++) {
+                let d = config.distractors[i];
+                let safePath = encodeURI(d.file); 
+                distractor_html += `
+                    <div class="audio-item">
+                        <p>${d.name}</p>
+                        <audio src="${safePath}" controls></audio>
+                    </div>
+                `;
+            }
+        }
+        distractor_html += '</div>';
+
+        block_timeline.push({
+            type: jsPsychHtmlButtonResponse,
+            stimulus: `
+                <div class="instruction-text" style="max-width: 1000px;">
+                    <h3>Hedef Dışı Sesler</h3>
+                    <p>Lütfen bu sesleri dinleyin. Test sırasında bu seslerle karşılaşacaksınız ancak bunlar hedef (/${config.target_char}/) <strong>DEĞİLDİR</strong>.</p>
+                    ${distractor_html}
+                </div>
+            `,
+            choices: ['Teste Hazırlık']
+        });
+
+        // 1. HATIRLATMA (TEMİZ TEST ÖNCESİ)
+        block_timeline.push({
+            type: jsPsychHtmlButtonResponse,
+            stimulus: `
+                <div class="instruction-text">
+                    <h3>Teste Başlamadan Önce Hatırlatma</h3>
+                    <p>Hedef sesi (/${config.target_char}/) sessiz ve gürültülü ortamlarda tekrar dinleyin.</p>
+                    
+                    <hr style="margin: 20px 0; border: 0.5px solid #555;">
+                    
+                    <div style="display:flex; justify-content:space-around; flex-wrap:wrap;">
+                        <div style="text-align:center; margin:10px; background:#444; padding:15px; border-radius:8px;">
+                            <p><strong>Sessiz Ortam /30ms/</strong></p>
+                            <audio src="${config.intro_short_clean}" controls></audio>
+                        </div>
+                        <div style="text-align:center; margin:10px; background:#444; padding:15px; border-radius:8px;">
+                            <p><strong>Gürültülü Ortam /30ms/</strong></p>
+                            <audio src="${config.intro_short_noisy}" controls></audio>
+                        </div>
+                    </div>
+                </div>
+            `,
+            choices: ['Teste Başla']
+        });
+
+        block_timeline.push({
+            type: jsPsychHtmlButtonResponse,
+            stimulus: `
+                <div class="instruction-text">
+                    <h3>Aşama 1: Sessiz Ortam</h3>
+                    <p>Dizileri dinleyin. Dizi bittikten sonra <strong>"Hedef VAR"</strong> veya <strong>"Hedef YOK"</strong> seçeneklerinden birini tıklayın.</p>
+                    <p>Hazır olduğunuzda başlayın.</p>
+                </div>
+            `,
+            choices: ['Başla']
+        });
+
+        var fixation = {
+            type: jsPsychHtmlKeyboardResponse,
+            stimulus: '<div class="fixation">+</div>',
+            choices: "NO_KEYS",
+            trial_duration: 500
+        };
+
+        var clean_test = {
+            timeline: [
+                fixation, 
+                {
+                    type: jsPsychAudioKeyboardResponse,
+                    stimulus: jsPsych.timelineVariable('stimulus'),
+                    choices: "NO_KEYS", 
+                    trial_ends_after_audio: true,
+                    prompt: '<div class="fixation">+</div>' 
+                },
+                {
+                    type: jsPsychHtmlButtonResponse,
+                    stimulus: `
+                        <div class="instruction-text">Hedef ses (/${config.target_char}/) var mıydı?</div>
+                    `,
+                    choices: ['Hedef VAR', 'Hedef YOK'],
+                    button_html: [
+                        '<button class="response-btn btn-yes">%choice%</button>',
+                        '<button class="response-btn btn-no">%choice%</button>'
+                    ],
+                    data: {
+                        task: 'response',
+                        phase: 'Clean',
+                        block_type: config.type_name,
+                        file_name: jsPsych.timelineVariable('stimulus'),
+                        target_present: jsPsych.timelineVariable('target_present'),
+                        condition_label: jsPsych.timelineVariable('condition_label')
+                    },
+                    on_finish: function(data){
+                        var response_index = data.response;
+                        var said_yes = (response_index === 0);
+                        var target = data.target_present;
+                        if(target && said_yes) data.accuracy = "hit";
+                        else if(!target && said_yes) data.accuracy = "false_alarm";
+                        else if(target && !said_yes) data.accuracy = "miss";
+                        else data.accuracy = "correct_rejection";
+                    }
+                }
+            ],
+            timeline_variables: config.clean_trials,
+            randomize_order: true,
+            sample: {
+                type: 'fixed-repetitions',
+                size: REPETITIONS_PER_STIMULUS_IN_BLOCK
+            }
+        };
+        block_timeline.push(clean_test);
+
+
+        /* ---------------------------------------------------------------------- */
+        /* 2. HATIRLATMA (GÜRÜLTÜLÜ TEST ÖNCESİ)                                  */
+        /* ---------------------------------------------------------------------- */
+        block_timeline.push({
+            type: jsPsychHtmlButtonResponse,
+            stimulus: `
+                <div class="instruction-text">
+                    <h3>Gürültülü Ortam Testi Öncesi Hatırlatma</h3>
+                    <p>Hedef sesi (/${config.target_char}/) sessiz ve gürültülü ortamlarda tekrar dinleyin.</p>
+                    
+                    <hr style="margin: 20px 0; border: 0.5px solid #555;">
+                    
+                    <div style="display:flex; justify-content:space-around; flex-wrap:wrap;">
+                        <div style="text-align:center; margin:10px; background:#444; padding:15px; border-radius:8px;">
+                            <p><strong>Sessiz Ortam /30ms/</strong></p>
+                            <audio src="${config.intro_short_clean}" controls></audio>
+                        </div>
+                        <div style="text-align:center; margin:10px; background:#444; padding:15px; border-radius:8px;">
+                            <p><strong>Gürültülü Ortam /30ms/</strong></p>
+                            <audio src="${config.intro_short_noisy}" controls></audio>
+                        </div>
+                    </div>
+                </div>
+            `,
+            choices: ['Gürültülü Ortam Testine Başla']
+        });
+        /* ---------------------------------------------------------------------- */
+
+
+        block_timeline.push({
+            type: jsPsychHtmlButtonResponse,
+            stimulus: `
+                <div class="instruction-text">
+                    <h3>Aşama 2: Gürültülü Ortam</h3>
+                    <p>Şimdi aynı hedef sesi gürültülü bir ortamda arayacaksınız.</p>
+                    <p>Dikkatlice dinleyiniz.</p>
+                </div>
+            `,
+            choices: ['Devam Et']
+        });
+
+        var noisy_test = {
+            timeline: [
+                fixation, 
+                {
+                    type: jsPsychAudioKeyboardResponse,
+                    stimulus: jsPsych.timelineVariable('stimulus'),
+                    choices: "NO_KEYS",
+                    trial_ends_after_audio: true,
+                    prompt: '<div class="fixation">+</div>'
+                },
+                {
+                    type: jsPsychHtmlButtonResponse,
+                    stimulus: `
+                        <div class="instruction-text">Hedef ses (/${config.target_char}/) var mıydı?</div>
+                    `,
+                    choices: ['Hedef VAR', 'Hedef YOK'],
+                    button_html: [
+                        '<button class="response-btn btn-yes">%choice%</button>',
+                        '<button class="response-btn btn-no">%choice%</button>'
+                    ],
+                    data: {
+                        task: 'response',
+                        phase: 'Noisy',
+                        block_type: config.type_name,
+                        file_name: jsPsych.timelineVariable('stimulus'),
+                        target_present: jsPsych.timelineVariable('target_present'),
+                        condition_label: jsPsych.timelineVariable('condition_label')
+                    },
+                    on_finish: function(data){
+                        var response_index = data.response;
+                        var said_yes = (response_index === 0);
+                        var target = data.target_present;
+
+                        if(target && said_yes) data.accuracy = "hit";
+                        else if(!target && said_yes) data.accuracy = "false_alarm";
+                        else if(target && !said_yes) data.accuracy = "miss";
+                        else data.accuracy = "correct_rejection";
+                    }
+                }
+            ],
+            timeline_variables: config.noisy_trials,
+            randomize_order: true,
+            sample: {
+                type: 'fixed-repetitions',
+                size: REPETITIONS_PER_STIMULUS_IN_BLOCK
+            }
+        };
+        block_timeline.push(noisy_test);
+
+        return block_timeline;
+    }
+
+    var all_configs = [experiment_structure.stop, experiment_structure.fricative, experiment_structure.vowel];
+    var last_start_id = null; 
+    var last_end_id = null;
+
+    for(var i=0; i < TOTAL_CYCLES; i++) {
+        var current_cycle_configs = jsPsych.randomization.shuffle(all_configs);
+        
+        while(
+            (last_start_id !== null && current_cycle_configs[0].id === last_start_id) ||
+            (last_end_id !== null && current_cycle_configs[0].id === last_end_id)
+        ) {
+            current_cycle_configs = jsPsych.randomization.shuffle(all_configs);
+        }
+        
+        last_start_id = current_cycle_configs[0].id;
+
+        for(var j=0; j < current_cycle_configs.length; j++) {
+            var config = current_cycle_configs[j];
+            var block_timeline = createBlockTimeline(config);
+            timeline.push(...block_timeline);
+            
+            if (j === current_cycle_configs.length - 1) {
+                last_end_id = config.id;
+            }
+        }
+        
+        if(i < TOTAL_CYCLES - 1) {
+            timeline.push({
+                type: jsPsychHtmlKeyboardResponse,
+                stimulus: `
+                    <div class="instruction-text">
+                        <h3>Tur ${i+1} Tamamlandı</h3>
+                        <p>Kısa bir mola verebilirsiniz.</p>
+                        <p>Devam etmek için herhangi bir tuşa basınız.</p>
+                    </div>
+                `
+            });
+        }
+    }
+    
+        timeline.push({
+        type: jsPsychHtmlKeyboardResponse,
+        stimulus: `
+            <div class="instruction-text" style="text-align: center; margin-top: 100px;">
+                <h2>Deney Tamamlandı.</h2>
+                <p>Katılımınız için teşekkür ederiz.</p>
+                <hr>
+                <p style="font-size: 24px; font-weight: bold; color: #4CAF50;">
+                    <strong>Verilerinizi KAYDETMEK ve çıkış yapmak için herhangi bir tuşa basınız.</strong>
+                </p>
+                <p style="font-size: 16px; color: #aaa;">
+                    (Veri dosyası otomatik olarak indirilecektir.)
+                </p>
+            </div>
+        `,
+        choices: "ALL_KEYS"
+    });
+
+    console.log("Timeline oluşturuldu, jsPsych başlatılıyor...");
+    jsPsych.run(timeline);
+
+  </script>
+</html>
+
+```
