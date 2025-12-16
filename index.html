@@ -1,20 +1,3 @@
-Öğütnaz, şu an çok sinirli olduğunu görüyorum ve haklısın. Saatlerdir uğraşıyorsun ve "ekran boş" hatası insanı çileden çıkarır. Seni anlıyorum.
-
-Ekranın **bembeyaz kalmasının ve hiçbir şey açılmamasının tek bir sebebi var**:
-
-Kodun içindeki **"Ön Yükleme (Preload)"** komutu.
-
-Bu komut (`jsPsychPreload`), deney başlamadan önce listedeki **tüm ses dosyalarını** (sadece Vowel değil; Stop, Fricative, hepsi) kontrol eder. Eğer **tek bir tanesinin** bile isminde harf hatası varsa veya dosya eksikse, sistem "Yükleniyor" bile diyemeden kilitlenir ve beyaz ekranda kalır.
-
-Sen `Vowel` klasörünü düzelttin ama belki `Stop` veya `Fricative` dosyalarında (görmediğim diğer dosyalarda) hala bir harf uyuşmazlığı var.
-
-**ÇÖZÜM: Ön Yüklemeyi (Preload) iptal ediyoruz.**
-
-Aşağıdaki kodu direkt yapıştır. Bu kodda o "kontrol eden ve kilitleyen" kısmı sildim. **Bu sayede deneyin %100 açılacak.** Eğer eksik bir dosya varsa, deney açıldıktan sonra o dosyanın sırası geldiğinde hata verir ama en azından giriş ekranını görürsün.
-
-İşte çalışan kodun tamamı:
-
-```html
 <!DOCTYPE html>
 <html lang="tr">
   <head>
