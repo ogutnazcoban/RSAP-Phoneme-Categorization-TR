@@ -5,6 +5,7 @@
     <title>Fonem Sınıflandırmasında Tını, Fonem Türü ve Dinleme Ortamına Etkileri</title>
     
     <script src="https://unpkg.com/jspsych@7.3.3"></script>
+    <script src="https://unpkg.com/@jspsych/plugin-preload@1.1.2"></script>
     <script src="https://unpkg.com/@jspsych/plugin-html-keyboard-response@1.1.2"></script>
     <script src="https://unpkg.com/@jspsych/plugin-html-button-response@1.1.2"></script>
     <script src="https://unpkg.com/@jspsych/plugin-audio-keyboard-response@1.1.2"></script>
@@ -202,6 +203,21 @@
         }
     };
 
+    var calibration_file = "Calibration_Sound_Long.wav"; 
+
+    // --- PRELOAD İÇİN DOSYA LİSTESİ OLUŞTURUCU ---
+    function get_all_audio_files() {
+        let files = [calibration_file];
+        for (let key in experiment_structure) {
+            let item = experiment_structure[key];
+            files.push(item.intro_long, item.intro_short_clean, item.intro_short_noisy);
+            item.distractors.forEach(d => files.push(d.file));
+            item.clean_trials.forEach(t => files.push(t.stimulus));
+            item.noisy_trials.forEach(t => files.push(t.stimulus));
+        }
+        return [...new Set(files)];
+    }
+
     /* -------------------------------------------------------------------------- */
     /* 2. BAŞLATMA                                                                */
     /* -------------------------------------------------------------------------- */
@@ -290,9 +306,13 @@
 
     var timeline = [];
 
-    // --- PRELOAD KISMINI İPTAL ETTİM, BÖYLECE EKRAN BEYAZ KALMAZ ---
-    // var all_files = ... (SİLİNDİ)
-    // timeline.push({ type: jsPsychPreload ... }); (SİLİNDİ)
+    // --- PRELOAD EKLENDİ ---
+    timeline.push({
+        type: jsPsychPreload,
+        audio: get_all_audio_files(),
+        message: 'Ses dosyaları yükleniyor, lütfen bekleyiniz...',
+        error_message: 'Bazı dosyalar yüklenemedi. Lütfen internetinizi ve dosya adlarını kontrol edin.'
+    });
 
      var intro_page = {
         type: jsPsychHtmlButtonResponse,
@@ -342,8 +362,6 @@
         }
     };
     timeline.push(demographic_form);
-
-    var calibration_file = "Calibration_Sound_Long.wav"; 
 
     var calibration = {
         type: jsPsychHtmlButtonResponse,
@@ -486,9 +504,6 @@
                 var last_data = jsPsych.data.get().last(1).values()[0];
                 var accuracy = last_data.accuracy; 
                 
-                // Hit (Hedef VAR + EVET) veya Correct Rejection (Hedef YOK + HAYIR) -> DOĞRU (Yeşil)
-                // Diğer durumlar -> YANLIŞ (Kırmızı)
-
                 if(accuracy === "hit" || accuracy === "correct_rejection") {
                     return '<div style="font-size:60px; font-weight:bold; color:#4CAF50;">DOĞRU</div>';
                 } else {
@@ -496,9 +511,8 @@
                 }
             },
             choices: "NO_KEYS",
-            trial_duration: 1000 // 1 saniye ekranda kalır
+            trial_duration: 1000 
         };
-        // -----------------------------------------------------------
 
         var clean_test = {
             timeline: [
@@ -538,7 +552,7 @@
                         else data.accuracy = "correct_rejection";
                     }
                 },
-                feedback_trial // Geri bildirim burada
+                feedback_trial 
             ],
             timeline_variables: config.clean_trials,
             randomize_order: true,
@@ -550,9 +564,6 @@
         block_timeline.push(clean_test);
 
 
-        /* ---------------------------------------------------------------------- */
-        /* 2. HATIRLATMA (GÜRÜLTÜLÜ TEST ÖNCESİ)                                  */
-        /* ---------------------------------------------------------------------- */
         block_timeline.push({
             type: jsPsychHtmlButtonResponse,
             stimulus: `
@@ -576,7 +587,6 @@
             `,
             choices: ['Gürültülü Ortam Testine Başla']
         });
-        /* ---------------------------------------------------------------------- */
 
 
         block_timeline.push({
@@ -630,7 +640,7 @@
                         else data.accuracy = "correct_rejection";
                     }
                 },
-                feedback_trial // Geri bildirim burada
+                feedback_trial 
             ],
             timeline_variables: config.noisy_trials,
             randomize_order: true,
