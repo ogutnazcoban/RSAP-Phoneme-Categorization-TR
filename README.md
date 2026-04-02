@@ -55,4 +55,3 @@ Upon completion, the system automatically downloads two `.csv` files:
 * **MATLAB:** (Used for the generation and manipulation of the auditory stimuli).
 
 ---
-© 2025 Öğütnaz Çoban. All rights reserved.
